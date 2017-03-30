@@ -1,4 +1,4 @@
-(use srfi-13 http-client intarweb uri-common)
+(use srfi-13 http-client intarweb uri-common medea)
 
 (define *default-graph* (make-parameter "http://tenforce.com/eurostat/"))
 
@@ -38,6 +38,15 @@
 	  (reify graph)
 	  (reify-triples triples)))
 
+
+;; (define array-as-list-parser
+;;   (cons 'array (lambda (x) x)))
+
+;; (json-parsers (cons array-as-list-parser (json-parsers)))
+
+(define (json-get field object)
+  (cdr (assoc field object)))
+
 (define (sparql/update endpoint query)
   (format #t "~%Query:~%~A" query)
   (with-input-from-request 
@@ -46,6 +55,22 @@
 		 headers: (headers '((content-type application/sparql-update))))
    query
    read-string))
+
+(define (sparql/select endpoint query)
+  (format #t "~%Query:~%~A~%" query)
+  (let-values (((result uri response)
+		(with-input-from-request 
+		 (make-request method: 'POST
+			       uri: (uri-reference endpoint)
+			       headers: (headers '((Content-Type application/x-www-form-urlencoded)
+						   (Accept application/json))))
+		 `((query . ,query))
+		 read-json)))
+    result))
+
+;;    (json-get 'bindings
+;;	      (json-get 'results
+
 
 (define-namespace tf "http://www.tenforce.com/books")
 
