@@ -1,11 +1,13 @@
-(use csv csv-string srfi-127)
+(use csv csv-string srfi-127 matchable)
 
 (load "rdf.scm")
 
 (define (load path)
   (with-input-from-file path read-string))
 
-(define datafile (with-input-from-file "../../data/cleaneddata1-470111.csv" read-string))
+;; (define datafile (with-input-from-file "../../data/cleaneddata1-470111.csv" read-string))
+
+(define datafile (with-input-from-file "./data/retailer470111.csv" read-string))
 
 (define parse (csv-parser #\,))
 
@@ -34,6 +36,25 @@
 (define-namespace stats "http://tenforce.com/stats")
 
 (define-namespace terms "http://tenforce.com/terms")
+
+;; rewrite using matchable... later: write macro csv-record->triples
+
+(define triple2
+  (match-lambda
+   [(supermarket ecoicop isba isba-desc esba esba-desc gtin gtin-desc quantity unit)
+    (let ((esba-desc-terms (string-split esba-desc))
+	  (gtin-desc-terms (string-split gtin-desc)))
+      `(,(make-triple (es gtin) #:a (stats "GTIN"))
+	,(make-triple (es isba) #:a (stats "ISBA"))
+	,(make-triple (es gtin) (stats "isba") (es isba))
+	,@(join
+	   (map (lambda (term)
+		  (list (make-triple (es gtin) (stats "hasTerm") (terms term))
+			(make-triple (terms term) #:a (stats "Term"))))
+		(join (list esba-desc-terms
+			    gtin-desc-terms))))))]))
+    
+   
 
 (define (triple datum)
   (let ((isba (third datum))
