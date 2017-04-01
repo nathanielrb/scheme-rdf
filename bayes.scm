@@ -4,20 +4,6 @@
 
 (load "rdf.scm")
 
-
-(define query1 "PREFIX eu: <http://tenforce.com/eurostat/>
-PREFIX terms: <http://tenforce.com/terms/>
-PREFIX stats: <http://tenforce.com/stats/>
-
-SELECT DISTINCT ?term, ?isba, (COUNT(?gtin) as ?count) WHERE {
-  GRAPH eu: {
-    ?gtin stats:hasTerm ?term .
-    filter(?term in (terms:lemon, terms:lime)) .
-    ?gtin stats:isba ?isba 
-  }
-}
-ORDER BY ASC(?isba) ASC(?term)")
-
 (define (term-counts-query terms)
   (format #f "PREFIX eu: <http://tenforce.com/eurostat/>
 PREFIX terms: <http://tenforce.com/terms/>
@@ -45,10 +31,6 @@ ORDER BY ASC(?isba) ASC(?term)"
 		   (json-get
 		    'results
 		    (sparql/select (*sparql-endpoint*) (term-counts-query terms))))))))
-
-(define results (sparql/select (*sparql-endpoint*) query1))
-
-(define lines (vector->list (json-get 'bindings (cdr (json-get 'results results)))))
 
 ;; TODO: generalize, match each field, convert types
 
