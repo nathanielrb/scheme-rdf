@@ -2,89 +2,44 @@
 
 (load "rdf.scm")
 
-(define (load path)
-  (with-input-from-file path read-string))
-
-;; (define datafile (with-input-from-file "../../data/cleaneddata1-470111.csv" read-string))
-
-(define datafile (with-input-from-file "./data/retailer470111.csv" read-string))
-
-(define parse (csv-parser #\,))
-
-;; Slow!
-
-(define (load-data)
-  (cdr
-   (map csv-record->list (parse datafile))))
-
-;; Lazy - dosn't work (EOF) and what is gained?
-
-(define (lazy-load-data path)
-  (let ((port (open-input-file path)))
-    (generator->lseq
-     (lambda ()
-       (csv-record->list
-	(join
-	 (parse
-	  (read-line
-	   port))))))))
-
-;; (define lazy-data (load-data  "../../data/cleaneddata1-470111.csv"))
-
-(define-namespace es "http://tenforce.com/eurostat")
-
-(define-namespace stats "http://tenforce.com/stats")
-
-(define-namespace terms "http://tenforce.com/terms")
-
-;; rewrite using matchable... later: write macro csv-record->triples
-
-(define triple2
-  (match-lambda
-   [(supermarket ecoicop isba isba-desc esba esba-desc gtin gtin-desc quantity unit)
-    (let ((esba-desc-terms (string-split esba-desc))
-	  (gtin-desc-terms (string-split gtin-desc)))
-      `(,(make-triple (es gtin) #:a (stats "GTIN"))
-	,(make-triple (es isba) #:a (stats "ISBA"))
-	,(make-triple (es gtin) (stats "isba") (es isba))
-	,@(join
-	   (map (lambda (term)
-		  (list (make-triple (es gtin) (stats "hasTerm") (terms term))
-			(make-triple (terms term) #:a (stats "Term"))))
-		(join (list esba-desc-terms
-			    gtin-desc-terms))))))]))
-    
-   
-
-(define (triple datum)
-  (let ((isba (third datum))
-	(esba (fifth datum))
-	(esba-desc-terms (string-split (sixth datum)))
-	(gtin (seventh datum))
-	(gtin-desc-terms (string-split (eighth datum))))
-    `(
-      ,(make-triple (es gtin) #:a (stats "GTIN"))
-      ,(make-triple (es isba) #:a (stats "ISBA"))
-      ,(make-triple (es gtin) (stats "isba") (es isba))
-      ,@(join
-	 (map (lambda (term)
-	       (list (make-triple (es gtin) (stats "hasTerm") (terms term))
-		     (make-triple (terms term) #:a (stats "Term"))))
-	      (join (list esba-desc-terms
-			  gtin-desc-terms)))))))
-
 (define (triples data)
   (join
    (map triple data)))
 
-(define (run-triple datum)
-  (sparql/update (*sparql-endpoint*)
-		 (insert-triples (triple datum)
-				 (*default-graph*))))
+(define (run-triple datum triple-maker)
+  (sparql/update (insert-triples
+		  (triple-maker datum)
+		  (*default-graph*))))
 
-(define (run data)
-  (for-each run-triple data))
+(define parse (csv-parser #\,))
 
-;; (define word-bank
-;;   (delete-duplicates
-;;    (join retailer-descriptions-words)))
+(define (lazy-data path)
+  (let ((port (open-input-file path)))
+    (generator->lseq
+     (lambda ()
+       (let ((line (read-line port)))
+	 (if (eof-object? line)
+	     #f
+	     (csv-record->list
+	      (join
+	       (parse line)))))))))
+
+(define (load-csv path triple-maker #!optional (lines #f) (test-rate 0.9))
+  (let loop ((data (lazy-data path))
+	     (n 0)
+	     (test-data '()))
+    (if (and data
+	     (lseq-car data)
+	     (or (not lines)
+		 (< n lines)))
+	(if (< (/ (random 100) 100) test-rate)
+	    (begin (run-triple (lseq-car data) triple-maker)
+		   (loop (lseq-cdr data)
+			 (+ n 1)
+			 test-data))
+	    (loop (lseq-cdr data)
+		  (+ n 1)
+		  (cons (lseq-car data)
+			test-data)))
+	test-data)))
+
