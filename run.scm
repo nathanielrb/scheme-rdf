@@ -1,5 +1,7 @@
 (load "eurostat.scm")
 
-(define TD (map test-datum (load-csv path gtin-triples 3000)))
+(*print-queries?* #f)
 
-(print (run-tests TD graph-bayes-best-match))
+(define TD (map test-datum (load-csv path gtin-triples 100)))
+
+(print (run-tests TD graph-naive-bayes-best-match))

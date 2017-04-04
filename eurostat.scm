@@ -7,7 +7,9 @@
 ;; (run-tests TD graph-bayes-best-match)
 
 (load "import.scm")
-(load "bayes.scm")
+(load "tests.scm")
+(load "tests-naivebayes.scm")
+(load "tests-cooccurrence.scm")
 
 (*print-queries?* #f)
 
@@ -40,6 +42,7 @@
 			 (list
 			  (make-triple (ids id) (stats "hasTerm") term))))
 		     (join (list esba-desc-terms
+				 (list gtin)
 				 gtin-desc-terms))))))]
    [_ '()]))
 
