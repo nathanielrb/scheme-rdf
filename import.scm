@@ -2,15 +2,6 @@
 
 (load "rdf.scm")
 
-(define (triples data)
-  (join
-   (map triple data)))
-
-(define (run-triple datum triple-maker)
-  (sparql/update (insert-triples
-		  (triple-maker datum)
-		  (*default-graph*))))
-
 (define parse (csv-parser #\,))
 
 (define (lazy-data path)
@@ -19,27 +10,23 @@
      (lambda ()
        (let ((line (read-line port)))
 	 (if (eof-object? line)
-	     #f
+	     (close-input-pipe port)
 	     (csv-record->list
 	      (join
 	       (parse line)))))))))
 
-(define (load-csv path triple-maker #!optional (lines #f) (test-rate 0.9))
+(define (make-run-thread thunk) (thread-start! (make-thread thunk)))
+
+(define (load-csv path fn #!optional (lines #f))
   (let loop ((data (lazy-data path))
 	     (n 0)
-	     (test-data '()))
+	     (accum '()))
     (if (and data
 	     (lseq-car data)
 	     (or (not lines)
 		 (< n lines)))
-	(if (< (/ (random 100) 100) test-rate)
-	    (begin (run-triple (lseq-car data) triple-maker)
-		   (loop (lseq-cdr data)
-			 (+ n 1)
-			 test-data))
-	    (loop (lseq-cdr data)
-		  (+ n 1)
-		  (cons (lseq-car data)
-			test-data)))
-	test-data)))
-
+	(loop (lseq-cdr data)
+	      (+ n 1)
+	      (cons (make-run-thread (lambda () (fn (lseq-car data))))
+		    accum))
+	accum)))

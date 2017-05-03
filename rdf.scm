@@ -33,9 +33,10 @@
 (define (reify x)
   (cond ((keyword? x) (keyword->string x))
 	((list? x) (apply conc x))
+	((substring=? "http://" x) (conc "<" x ">"))
 	(else (conc "\"" x "\""))))
 
-(define (make-triple s p o)
+(define (triple s p o)
   (list s p o))
 
 (define (reify-triple triple)
@@ -45,15 +46,25 @@
 	" "
 	(reify (caddr triple))))
 
+(define (uri str)
+  (format #f "<~A>"))
+
 (define (reify-triples triples)
   (apply conc
 	 (intersperse (map reify-triple triples)
 		      " .\n  ")))
 
-(define (insert-triples triples graph)
+(define (insert-triples triples  #!optional (graph (*default-graph*)))
   (format #f "WITH <~A>~%INSERT {~%  ~A ~%}"
 	  graph
 	  (reify-triples triples)))
+
+(define (select-triples vars statements #!key (graph (*default-graph*)) order-by)
+  (let ((order-statement (if order-by
+			     (format #f "~%ORDER BY ~A" order-by)
+			     "")))
+    (format #f "WITH <~A>~%SELECT ~A~%WHERE {~% ~A ~%} ~A"
+	    graph vars statements order-statement)))
 
 (define (expand-namespaces namespaces)
   (apply conc
@@ -112,4 +123,10 @@
   (syntax-rules ()
     ((match-sparql (vars ...) query form)
      (map (match-lambda ((vars ...) form))
+	  (sparql/select query)))))
+
+(define-syntax query-with-vars
+  (syntax-rules ()
+    ((match-sparql (vars ...) query form)
+     (map (match-lambda (((_ . vars) ...) form))
 	  (sparql/select query)))))

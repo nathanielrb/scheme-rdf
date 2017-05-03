@@ -1,27 +1,19 @@
-;; Usage
-;;
-;; Load:
-;; (define TD (map test-datum (load-csv path gtin-triples)))
-;;
-;; Test:
-;; (run-tests TD graph-bayes-best-match)
-
 (load "import.scm")
-(load "tests.scm")
-(load "tests-naivebayes.scm")
-(load "tests-cooccurrence.scm")
 
-(*print-queries?* #f)
+(*print-queries?* #t)
 
-(define-namespace es "http://tenforce.com/eurostat")
+(*default-graph* "http://data.europa.eu/eurostat/")
 
-(define-namespace stats "http://tenforce.com/stats")
+(define-namespace skos "http://www.w3.org/2004/02/skos/core#")
+(define-namespace qb "http://purl.org/linked-data/cube#")
+(define-namespace dct "http://purl.org/dc/terms/")
+(define-namespace schema "http://schema.org/")
 
-(define-namespace terms "http://tenforce.com/terms")
-
-(define-namespace ids "http://tenforce.com/uuids")
-
-(define path "./data/retailer470111.csv")
+(define-namespace obs "http://data.europa.eu/eurostat/id/observations/")
+(define-namespace e6 "http://data.europa.eu/eurostat/id/taxonomy/ECOICOP-6/concept/")
+(define-namespace gt "http://data.europa.eu/eurostat/id/taxonomy/GTIN/concept/")
+(define-namespace terms "http://data.europa.eu/eurostat/id/terms/")
+(define-namespace eurostat "http://data.europa.eu/eurostat/ns/")
 
 (define (uuid label)
   (->string (gensym label)))
@@ -29,27 +21,52 @@
 (define (terms-split terms)
   (string-split terms ", "))
 
-(define gtin-triples
+(define (insert-term-triple term)
+  (let ((id (uuid "term")))
+    (sparql/update (insert-triples (list (triple (terms id) (eurostat "text") term))))
+    (terms id)))
+  
+(define (term-triple-ids terms)
+  (map (lambda (term)
+	 (let ((ids (query-with-vars (id)
+		     (select-triples "?s" (format #f "?s eurostat:text \"~A\"" term))
+		     id)))
+	   (if (null? ids)
+	       (insert-term-triple term)
+	       (car ids))))
+       terms))
+
+(define training-triples
   (match-lambda
-   [(supermarket ecoicop isba isba-desc esba esba-desc gtin gtin-desc quantity unit)
-    (let ((esba-desc-terms (terms-split esba-desc))
-	  (gtin-desc-terms (terms-split gtin-desc))
-	  (id (uuid 'item)))
-      `(,(make-triple (ids id) (stats "gtin") (es gtin))
-	,(make-triple (ids id) (stats "isba") (es isba))
-	,@(join (map (lambda (term)
-		       (let ((termid (uuid 'term)))
-			 (list
-			  (make-triple (ids id) (stats "hasTerm") term))))
-		     (join (list esba-desc-terms
-				 (list gtin)
-				 gtin-desc-terms))))))]
-   [_ '()]))
+   ((supermarket ecoicop ecoicop6 ecoicop6-desc
+		 esba esba-desc gtin gtin-desc quantity unit)
+    (let ((p (obs (uuid "observation")))
+	  (term-ids (term-triple-ids (terms-split gtin-desc))))
+      (append
+       (list
+	(triple p #:a (qb "Observation"))
+	(if (< (/ (random 100) 100) 0.9)
+	    (triple p (eurostat "classification") (e6 ecoicop))
+	    (triple p (eurostat "target-classification") (e6 ecoicop)))
+	(triple p (eurostat "gtin") (gt gtin)))       
+       (map (lambda (term) (triple p (eurostat "term") term))
+	    term-ids))))))
 
-(define test-datum
-  (match-lambda
-   [(supermarket ecoicop isba isba-desc esba esba-desc gtin gtin-desc quantity unit)
-    (list isba (append (terms-split esba-desc) (terms-split gtin-desc)))]))  
+(define (load-dataset path #!optional (lines #f))
+  (load-csv path (compose sparql/update insert-triples training-triples) lines))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Training
 
+(define (term-cooccurrence-query id)
+  (select-triples "DISTINCT ?class, COUNT(DISTINCT ?id), COUNT(DISTINCT ?term)"
+		  (format #f "OPTIONAL { ?id eurostat:term ?term . <~A> eurostat:term ?term .
+                              }
+                              ?id eurostat:classification ?class"
+			  id)
+		  #:order-by "ASC(?class)"))
 
+(define (class-term-cooccurrences id)
+  (cons id
+	(query-with-vars
+	 (class count term-count) (term-cooccurrence-query id) (list class count term-count))))
