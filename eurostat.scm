@@ -1,6 +1,6 @@
 (load "import.scm")
 
-(*print-queries?* #t)
+(*print-queries?* #f)
 
 (*default-graph* "http://data.europa.eu/eurostat/")
 
@@ -58,15 +58,36 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Training
 
+(define (training-set)
+  (query-with-vars (id target)
+		   (select-triples "?s, ?target"
+				   "?s a qb:Observation .
+                                    ?s eurostat:target-classification ?target
+                                    FILTER NOT EXISTS { ?s eurostat:classification ?c }")
+		   (list id target)))
+
 (define (term-cooccurrence-query id)
-  (select-triples "DISTINCT ?class, COUNT(DISTINCT ?id), COUNT(DISTINCT ?term)"
-		  (format #f "OPTIONAL { ?id eurostat:term ?term . <~A> eurostat:term ?term .
-                              }
+  (select-triples "DISTINCT ?class, COUNT(DISTINCT ?id), COUNT(DISTINCT ?term), COUNT(DISTINCT ?term2)"
+		  (format #f "OPTIONAL { ?id eurostat:term ?term . <~A> eurostat:term ?term }
+                              ?id eurostat:term ?term2 .
                               ?id eurostat:classification ?class"
 			  id)
 		  #:order-by "ASC(?class)"))
 
 (define (class-term-cooccurrences id)
-  (cons id
-	(query-with-vars
-	 (class count term-count) (term-cooccurrence-query id) (list class count term-count))))
+  (query-with-vars
+   (class id-count shared-term-count all-term-count)
+   (term-cooccurrence-query id)
+   (list class id-count shared-term-count all-term-count)))
+
+(define (run-tests training-set)
+  (map (match-lambda ((id target)
+		      (let ((predictions
+			     (sort
+			      (class-term-cooccurrences id)
+			      (match-lambda* (((_ x a b) (_ y c d))
+					      (> (* x (/ a b)) (* y (/ c d))))))))
+			(and (not (null? predictions))
+			     (equal? target (caar predictions))))))
+
+       training-set))
