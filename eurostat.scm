@@ -70,7 +70,7 @@
   (select-triples "DISTINCT ?class, COUNT(DISTINCT ?id), COUNT(DISTINCT ?term), COUNT(DISTINCT ?term2)"
 		  (format #f "OPTIONAL { ?id eurostat:term ?term . <~A> eurostat:term ?term }
                               ?id eurostat:term ?term2 .
-                              ?id eurostat:classification ?class"
+                              ?id eurostat:classification ?class "
 			  id)
 		  #:order-by "ASC(?class)"))
 
@@ -83,11 +83,29 @@
 (define (run-tests training-set)
   (map (match-lambda ((id target)
 		      (let ((predictions
-			     (sort
-			      (class-term-cooccurrences id)
-			      (match-lambda* (((_ x a b) (_ y c d))
-					      (> (* x (/ a b)) (* y (/ c d))))))))
+			     (map car
+				  (sort
+				   (class-term-cooccurrences id)
+				   (match-lambda* (((_ x a b) (_ y c d))
+						   ;;(> x y))))))
+						   (> (* x (/ a b)) (* y (/ c d)))))))))
 			(and (not (null? predictions))
-			     (equal? target (caar predictions))))))
+			     (member target (take-max predictions 1))))))
+			     ;;(equal? target (car predictions))))))
 
        training-set))
+
+(define (take-max l n)
+  (if (or (null? l) (= n 0))
+      '()
+      (cons (car l) (take-max (cdr l) (- n 1)))))
+
+;; (define T (training-set))
+;; (define P (run-tests T))
+;; (/ (length (filter values P)) (length T))
+
+(define (run)  
+  (let* ((tset (training-set))
+	(predictions (run-tests tset)))
+    (/ (length (filter values predictions))
+       (length tset))))
